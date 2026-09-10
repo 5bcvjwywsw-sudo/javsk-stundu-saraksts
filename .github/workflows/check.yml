@@ -1,42 +1,38 @@
-name: Pārbaudīt stundu sarakstu
+name: Check Schedule Updates
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
-
+    # Запуск каждые 30 минут
+    - cron: '*/30 * * * *'
   workflow_dispatch:
-
-permissions:
-  contents: write
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
 
 jobs:
-
-  check:
-
+  check-and-update:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Iegūt projektu
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Iestatīt Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.x'
 
-      - name: Instalēt nepieciešamo
+      - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Pārbaudīt stundu sarakstu
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-
+      - name: Run schedule check script
         run: |
           python bot.py
 
-            - name: Commit and push changes
+      - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "javsk-schedule-bot@users.noreply.github.com"
@@ -46,17 +42,4 @@ jobs:
           else
             git commit -m "Atjaunot stundu saraksta informāciju"
             git push
-          fi
-
-          if git diff --cached --quiet; then
-
-            echo "Izmaiņu nav."
-
-          else
-
-            git commit \
-              -m "Atjaunot stundu saraksta informāciju"
-
-            git push
-
           fi
