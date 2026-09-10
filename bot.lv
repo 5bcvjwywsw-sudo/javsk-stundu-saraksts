@@ -1,0 +1,163 @@
+import os
+import hashlib
+import requests
+from pathlib import Path
+
+
+# ============================================================
+# JELGAVAS ASPAZIJAS VIDUSSKOLAS STUNDU SARAKSTS
+# ============================================================
+
+PDF_URL = (
+    "https://aspazijasvsk.lv/"
+    "macibu-process/izmainas-stundu-saraksta-ritdienai/"
+)
+
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
+
+STATE_FILE = Path("last_hash.txt")
+PDF_FILE = Path("stundu_saraksts.pdf")
+
+
+# ============================================================
+# LEJUPIELĀDĒ PDF
+# ============================================================
+
+def download_pdf():
+
+    response = requests.get(
+        PDF_URL,
+        timeout=30,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
+    response.raise_for_status()
+
+    if not response.content.startswith(b"%PDF"):
+        raise RuntimeError(
+            "Norādītā saite neatgrieza PDF failu."
+        )
+
+    PDF_FILE.write_bytes(response.content)
+
+    return response.content
+
+
+# ============================================================
+# APRĒĶINA FAILA HASH
+# ============================================================
+
+def calculate_hash(data):
+
+    return hashlib.sha256(data).hexdigest()
+
+
+# ============================================================
+# NOLASA IEPRIEKŠĒJO HASH
+# ============================================================
+
+def get_old_hash():
+
+    if not STATE_FILE.exists():
+        return None
+
+    return STATE_FILE.read_text().strip()
+
+
+# ============================================================
+# SAGLABĀ JAUNO HASH
+# ============================================================
+
+def save_hash(file_hash):
+
+    STATE_FILE.write_text(file_hash)
+
+
+# ============================================================
+# NOSŪTA PDF TELEGRAM
+# ============================================================
+
+def send_pdf():
+
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{TELEGRAM_TOKEN}/sendDocument"
+    )
+
+    with PDF_FILE.open("rb") as pdf:
+
+        response = requests.post(
+            url,
+            data={
+                "chat_id": CHAT_ID,
+                "caption": (
+                    "📚 Jauns stundu saraksts!\n\n"
+                    "Jelgavas Aspazijas Vidusskola"
+                )
+            },
+            files={
+                "document": (
+                    "stundu_saraksts.pdf",
+                    pdf,
+                    "application/pdf"
+                )
+            },
+            timeout=60
+        )
+
+    response.raise_for_status()
+
+
+# ============================================================
+# GALVENĀ PROGRAMMA
+# ============================================================
+
+def main():
+
+    print("Pārbaudu stundu sarakstu...")
+
+    pdf_data = download_pdf()
+
+    new_hash = calculate_hash(pdf_data)
+    old_hash = get_old_hash()
+
+    print("Pašreizējais hash:", new_hash)
+    print("Iepriekšējais hash:", old_hash)
+
+    # PIRMĀ PALAIŠANA
+    # Saglabā pašreizējo PDF, bet nesūta to.
+    if old_hash is None:
+
+        print(
+            "Pirmā pārbaude. "
+            "Pašreizējais saraksts ir saglabāts."
+        )
+
+        save_hash(new_hash)
+
+        return
+
+    # SARAKSTS NAV MAINĪJIES
+
+    if new_hash == old_hash:
+
+        print("Stundu saraksts nav mainījies.")
+
+        return
+
+    # SARAKSTS IR MAINĪJIES
+
+    print("ATRasts JAUNS STUNDU SARAKSTS!")
+
+    send_pdf()
+
+    save_hash(new_hash)
+
+    print("Jaunais saraksts nosūtīts Telegram.")
+
+
+if __name__ == "__main__":
+    main()
