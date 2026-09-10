@@ -1,0 +1,57 @@
+name: Pārbaudīt stundu sarakstu
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+
+  check:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Iegūt projektu
+        uses: actions/checkout@v4
+
+      - name: Iestatīt Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalēt nepieciešamo
+        run: pip install -r requirements.txt
+
+      - name: Pārbaudīt stundu sarakstu
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python bot.py
+
+      - name: Saglabāt pēdējās versijas informāciju
+        run: |
+
+          git config user.name "JAVSK Stundu saraksts"
+
+          git config user.email \
+            "javsk-schedule-bot@users.noreply.github.com"
+
+          git add last_hash.txt
+
+          if git diff --cached --quiet; then
+
+            echo "Izmaiņu nav."
+
+          else
+
+            git commit -m "Atjaunot stundu saraksta versiju"
+
+            git push
+
+          fi
